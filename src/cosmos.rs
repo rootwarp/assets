@@ -4,6 +4,7 @@ use reqwest;
 use async_trait::async_trait;
 use serde_json;
 use serde::{Deserialize, Serialize};
+use num_bigint::{BigInt, ToBigInt};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BalanceResponse {
@@ -48,9 +49,9 @@ pub struct RewardsData {
 
 #[async_trait]
 pub trait Account {
-    async fn balance(&self) -> Result<Vec<Balance>, Box<dyn Error>>;
-    async fn staking(&self) -> Result<Vec<DelegateData>, Box<dyn Error>>;
-    async fn rewards(&self) -> Result<Vec<Balance>, Box<dyn Error>>;
+    async fn balance(&self) -> Result<BigInt, Box<dyn Error>>;
+    async fn staking(&self) -> Result<BigInt, Box<dyn Error>>;
+    async fn rewards(&self) -> Result<BigInt, Box<dyn Error>>;
 }
 
 pub struct CosmoshubAccount {
@@ -59,7 +60,7 @@ pub struct CosmoshubAccount {
 
 #[async_trait]
 impl Account for CosmoshubAccount {
-    async fn balance(&self) -> Result<Vec<Balance>, Box<dyn Error>> {
+    async fn balance(&self) -> Result<BigInt, Box<dyn Error>> {
         let base = "https://cosmos-mainnet-rpc-korea.allthatnode.com:1317";
 
         let url = format!("{}/cosmos/bank/v1beta1/balances/{}", base, self.address);
@@ -67,11 +68,20 @@ impl Account for CosmoshubAccount {
         match response {
             Ok(resp) => {
                 let body = resp.text().await?;
-                println!("balance {}", body);
+                println!("Balance {}", body);
 
                 let ret: serde_json::Result<BalanceResponse> = serde_json::from_str(&*body);
                 match ret {
-                    Ok(balance) => Ok(balance.balances),
+                    Ok(balance) => {
+                        let value = balance.balances
+                            .iter()
+                            .map(|b| { 
+                                (b.amount.parse::<f64>().unwrap() as i64).to_bigint().unwrap()
+                            })
+                            .sum();
+
+                        Ok(value)
+                    },
                     Err(err) => Err(Box::new(err)),
                 }
             }
@@ -79,7 +89,7 @@ impl Account for CosmoshubAccount {
         }
     }
 
-    async fn staking(&self) -> Result<Vec<DelegateData>, Box<dyn Error>> {
+    async fn staking(&self) -> Result<BigInt, Box<dyn Error>> {
         let base = "https://cosmos-mainnet-rpc-korea.allthatnode.com:1317";
 
         let url = format!("{}/cosmos/staking/v1beta1/delegations/{}", base, self.address);
@@ -91,7 +101,16 @@ impl Account for CosmoshubAccount {
 
                 let ret: serde_json::Result<DelegateResponse> = serde_json::from_str(&*body);
                 match ret {
-                    Ok(data) => Ok(data.delegation_responses),
+                    Ok(data) => {
+                        let value = data.delegation_responses
+                            .iter()
+                            .map(|d| {
+                                (d.balance.amount.parse::<f64>().unwrap() as i64).to_bigint().unwrap()
+                            })
+                            .sum();
+
+                        Ok(value)
+                    },
                     Err(err) => Err(Box::new(err)),
                 }
             }
@@ -99,7 +118,7 @@ impl Account for CosmoshubAccount {
         }
     }
 
-    async fn rewards(&self) -> Result<Vec<Balance>, Box<dyn Error>> {
+    async fn rewards(&self) -> Result<BigInt, Box<dyn Error>> {
         let base = "https://cosmos-mainnet-rpc-korea.allthatnode.com:1317";
 
         let url = format!("{}/cosmos/distribution/v1beta1/delegators/{}/rewards", base, self.address);
@@ -111,7 +130,17 @@ impl Account for CosmoshubAccount {
 
                 let ret: serde_json::Result<RewardsResponse> = serde_json::from_str(&*body);
                 match ret {
-                    Ok(rewards) => Ok(rewards.total),
+                    Ok(rewards) => {
+                        let value = rewards.total
+                            .iter()
+                            .filter(|r| { r.denom == "uatom" })
+                            .map(|r| { 
+                                (r.amount.parse::<f64>().unwrap() as i64).to_bigint().unwrap()
+                            })
+                            .sum();
+
+                        Ok(value)
+                    }
                     Err(err) => Err(Box::new(err)),
                 }
             }

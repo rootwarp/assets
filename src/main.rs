@@ -1,6 +1,7 @@
 use std::env;
 use futures;
 
+use num_bigint::BigInt;
 use assets::cosmos::{CosmoshubAccount, Account};
 
 #[tokio::main]
@@ -16,22 +17,16 @@ async fn main() {
 
     match ret {
         Ok(values) => {
-            let balance: f64 = values.0.iter()
-                .map(|b| { b.amount.parse::<f64>().unwrap() })
-                .sum();
+            let balance: BigInt = values.0;
+            let staking: BigInt = values.1;
+            let reward: BigInt = values.2;
 
-            let staking: f64 = values.1.iter()
-                .map(|v| { v.balance.amount.parse::<f64>().unwrap() })
-                .sum();
-
-            let reward: f64 = values.2.iter()
-                .map(|v| { v.amount.parse::<f64>().unwrap() })
-                .sum();
+            println!("Balance {:?}", balance);
+            println!("Staking {:?}", staking);
+            println!("Rewards {:?}", reward);
             
-            let sum: f64 = [balance, staking, reward].iter().sum();
+            let sum: BigInt = [balance, staking, reward].iter().sum();
 
-            println!("{:?}", values);
-            println!("{:?} {:?} {:?}", balance, staking, reward);
             println!("Total {:?}", sum);
         }
 
